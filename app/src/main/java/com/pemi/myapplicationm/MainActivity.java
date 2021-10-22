@@ -1,9 +1,13 @@
 package com.pemi.myapplicationm;
 
+import static android.Manifest.permission.WRITE_EXTERNAL_STORAGE;
+
+import android.Manifest;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.hardware.SensorManager;
 import android.nfc.NdefMessage;
@@ -11,30 +15,57 @@ import android.nfc.NfcAdapter;
 import android.nfc.Tag;
 import android.nfc.tech.MifareClassic;
 import android.nfc.tech.MifareUltralight;
+import android.os.Build;
 import android.os.Bundle;
-import android.os.Parcelable;
+import android.os.Environment;
 import android.util.Log;
 import android.view.Display;
 import android.view.OrientationEventListener;
 import android.view.Surface;
+import android.view.View;
 import android.view.WindowManager;
+import android.widget.Button;
+import android.widget.EditText;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.Charset;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.TimeZone;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "Rotation";
+    private final String FILE_NAME = "example.txt";
+    public static final String DATE_FORMAT_1 = "hh:mm a";
+    public String loadedContents;
     private NfcAdapter nfcAdapter;
     PendingIntent pendingIntent;
     RelativeLayout relativeLayout;
     int mLastRotation = 0;
-    TextView mTextView;
+    TextView mTextView, mTextView2;
+    EditText mEditText;
+    Button mButton;
+    StringBuilder hex;
+    String filename = "";
+    String filepath = "";
+    String fileContent = "";
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -42,6 +73,29 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         relativeLayout = findViewById(R.id.relativeLayout);
         mTextView = findViewById(R.id.textView1);
+        filename = "myFile.txt";
+        filepath = "MyFileDir";
+
+        load();
+        if (!isExternalStorageAvailableForRW()) {
+            mButton.setEnabled(false);
+        }
+
+
+        if (
+                Build.VERSION.SDK_INT >= 23
+                        && checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE)
+                        != PackageManager.PERMISSION_GRANTED
+                        && checkSelfPermission(WRITE_EXTERNAL_STORAGE)
+                        != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(new String[]{
+                    Manifest.permission.READ_EXTERNAL_STORAGE
+                    , Manifest.permission.WRITE_EXTERNAL_STORAGE
+            }, 0);
+        } else {
+            Toast.makeText(this, "Permission granted", Toast.LENGTH_SHORT).show();
+        }
 
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
 
@@ -85,6 +139,7 @@ public class MainActivity extends AppCompatActivity {
         }
         //create a pendingIntent
         pendingIntent = PendingIntent.getActivity(this, 0, new Intent(this, this.getClass()).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), 0);
+
     }
 
     @Override
@@ -110,7 +165,6 @@ public class MainActivity extends AppCompatActivity {
         super.onNewIntent(intent);
         setIntent(intent);
         resolveIntent(intent);
-        readFromIntent(intent);
     }
 
     private void resolveIntent(Intent intent) {
@@ -128,13 +182,58 @@ public class MainActivity extends AppCompatActivity {
     private String detectTagData(Tag tag) {
         StringBuilder sb = new StringBuilder();
         byte[] id = tag.getId();
-        StringBuilder hex = sb.append("ID (hex): ").append(toHex(id)).append('\n');
-        sb.append("ID (reversed hex): ").append(toReversedHex(id)).append('\n');
+        hex = sb.append("ID (hex): ").append(toHex(id)).append('\n');
+//        sb.append("ID (reversed hex): ").append(toReversedHex(id)).append('\n');
         sb.append("ID (dec): ").append(toDec(id)).append('\n');
-        sb.append("ID (reversed dec): ").append(toReversedDec(id)).append('\n');
+//        sb.append("ID (reversed dec): ").append(toReversedDec(id)).append('\n');
 //        sb.append("ID (string): ").append(toString()).append('\n');
-        Toast.makeText(this, "Data Terbaca", Toast.LENGTH_SHORT).show();
+        String data = tag.getId().toString();
+        Toast.makeText(this, "NFC SCANNED", Toast.LENGTH_SHORT).show();
         mTextView.setText(hex);
+        fileContent = mTextView.getText().toString().trim();
+        // Check for Storage Permission
+        if (isStoragePermissionGranted()) {
+            // If input is not empty, we'll proceed
+            if (!fileContent.equals("")) {
+                // To access app-specific files from external storage, you can call
+                // getExternalFilesDir() method. It returns the path to
+                // storage > emulated > 0 > Android > data > [package_name] > files > MyFileDir
+                // or,
+                // storage > self > Android > data > [package_name] > files > MyFileDir
+                // directory on the SD card. Once the app is uninstalled files here also get
+                // deleted.
+                // Create a File object like this.
+//                File myExternalFile = new File(getExternalFilesDir(filepath), filename);
+                File folderFile = new File(Environment.getExternalStorageDirectory().getPath() + filepath);
+                if (!folderFile.exists()) {
+                    folderFile.mkdirs();
+                }
+                File myExternalFile = new File(getExternalFilesDir(filepath), filename);
+                // Create an object of FileOutputStream for writing data to myFile.txt
+                FileOutputStream fos = null;
+                try {
+                    // Instantiate the FileOutputStream object and pass myExternalFile in constructor
+                    fos = new FileOutputStream(myExternalFile);
+                    // Write to the file
+                    String merge = fileContent+loadedContents;
+                    fos.write(merge.getBytes());
+                    // Close the stream
+                    fos.close();
+                } catch (FileNotFoundException e) {
+                    e.printStackTrace();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                load();
+                // Clear the EditText
+                // Show a Toast message to inform the user that the operation has been successfully completed.
+                Toast.makeText(MainActivity.this, "Information saved to SD card.", Toast.LENGTH_SHORT).show();
+            } else {
+                // If the Text field is empty show corresponding Toast message
+                Toast.makeText(MainActivity.this, "Text field can not be empty.", Toast.LENGTH_SHORT).show();
+            }
+        }
+
         String prefix = "android.nfc.tech";
         sb.append("Technologies: ");
         for (String tech : tag.getTechList()) {
@@ -222,22 +321,22 @@ public class MainActivity extends AppCompatActivity {
 //    return sb.toString();
 //}
 
-    private void readFromIntent(Intent intent) {
-        String action = intent.getAction();
-        if (NfcAdapter.ACTION_TAG_DISCOVERED.equals(action)
-                || NfcAdapter.ACTION_TECH_DISCOVERED.equals(action)
-                || NfcAdapter.ACTION_NDEF_DISCOVERED.equals(action)) {
-            Parcelable[] rawMsgs = intent.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES);
-            NdefMessage[] msgs = null;
-            if (rawMsgs != null) {
-                msgs = new NdefMessage[rawMsgs.length];
-                for (int i = 0; i < rawMsgs.length; i++) {
-                    msgs[i] = (NdefMessage) rawMsgs[i];
-                }
-            }
-            buildTagViews(msgs);
-        }
-    }
+    //    private void readFromIntent(Intent intent) {
+//        String action = intent.getAction();
+//        if (NfcAdapter.ACTION_TAG_DISCOVERED.equals(action)
+//                || NfcAdapter.ACTION_TECH_DISCOVERED.equals(action)
+//                || NfcAdapter.ACTION_NDEF_DISCOVERED.equals(action)) {
+//            Parcelable[] rawMsgs = intent.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES);
+//            NdefMessage[] msgs = null;
+//            if (rawMsgs != null) {
+//                msgs = new NdefMessage[rawMsgs.length];
+//                for (int i = 0; i < rawMsgs.length; i++) {
+//                    msgs[i] = (NdefMessage) rawMsgs[i];
+//                }
+//            }
+//            buildTagViews(msgs);
+//        }
+//    }
     private void buildTagViews(NdefMessage[] msgs) {
         if (msgs == null || msgs.length == 0) return;
 
@@ -347,4 +446,69 @@ public class MainActivity extends AppCompatActivity {
         return null;
     }
 
+    public boolean isStoragePermissionGranted() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    == PackageManager.PERMISSION_GRANTED) {
+                //Permission is granted
+                return true;
+            } else {
+                //Permission is revoked
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 1);
+                return false;
+            }
+        } else {
+            //permission is automatically granted on sdk<23 upon installation
+            //Permission is granted
+            return true;
+        }
+    }
+
+    private boolean isExternalStorageAvailableForRW() {
+        // Check if the external storage is available for read and write by calling
+        // Environment.getExternalStorageState() method. If the returned state is MEDIA_MOUNTED,
+        // then you can read and write files. So, return true in that case, otherwise, false.
+        String extStorageState = Environment.getExternalStorageState();
+        if (extStorageState.equals(Environment.MEDIA_MOUNTED)) {
+            return true;
+        }
+        return false;
+    }
+
+    private void load() {
+        FileReader fr = null;
+        File myExternalFile = new File(getExternalFilesDir(filepath), filename);
+
+
+        StringBuilder stringBuilder = new StringBuilder();
+        try {
+            // Instantiate the FileReader object and pass myExternalFile in the constructor
+            fr = new FileReader(myExternalFile);
+            // Instantiate a BufferedReader object and pass FileReader object in constructor.
+            // The BufferedReader maintains an internal buffer and can be used with different
+            // types of readers to read text from an Input stream more efficiently.
+            BufferedReader br = new BufferedReader(fr);
+            // Next, call readLine() method on BufferedReader object to read a line of text.
+            String line = br.readLine();
+            // Use a while loop to read the entire file
+            while (line != null) {
+                // Append the line read to StringBuilder object. Also, append a new-line
+                stringBuilder.append(line).append('\n');
+                // Again read the next line and store in variable line
+                line = br.readLine();
+            }
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            Date currentTime = Calendar.getInstance().getTime();
+
+            // Convert the StringBuilder content into String and add text "File contents\n"
+            // at the beginning.
+            loadedContents = "\n" + currentTime + "\n" + stringBuilder.toString().trim();
+            // Set the TextView with fileContents
+//            mTextView2.setText(loadedContents);
+        }
+    }
 }
