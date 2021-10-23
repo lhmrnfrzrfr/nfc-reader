@@ -182,12 +182,14 @@ public class MainActivity extends AppCompatActivity {
     private String detectTagData(Tag tag) {
         StringBuilder sb = new StringBuilder();
         byte[] id = tag.getId();
-        hex = sb.append("ID (hex): ").append(toHex(id)).append('\n');
+        String data = tag.getId().toString();
+        hex = sb.append("ID : ").append((data)).append('\n');
+        sb.append("ID (hex): ").append(toHex(id)).append('\n');
 //        sb.append("ID (reversed hex): ").append(toReversedHex(id)).append('\n');
         sb.append("ID (dec): ").append(toDec(id)).append('\n');
 //        sb.append("ID (reversed dec): ").append(toReversedDec(id)).append('\n');
 //        sb.append("ID (string): ").append(toString()).append('\n');
-        String data = tag.getId().toString();
+
         Toast.makeText(this, "NFC SCANNED", Toast.LENGTH_SHORT).show();
         mTextView.setText(hex);
         fileContent = mTextView.getText().toString().trim();
